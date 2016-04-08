@@ -1,0 +1,5 @@
+include CHANGES.rst README.md
+
+recursive-include django_admin_rq/static *
+recursive-include django_admin_rq/templates *
+recursive-include django_admin_rq/locale *
