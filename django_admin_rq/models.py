@@ -20,8 +20,8 @@ STATUS_CHOICES = (
 
 
 @python_2_unicode_compatible
-class TaskStatus(models.Model):
-    # A model to save information about an asynchronous task
+class JobStatus(models.Model):
+    # A model to save information about an asynchronous job
     created_on = models.DateTimeField(auto_now_add=True)
     progress = models.PositiveIntegerField(default=0)
     job_id = models.CharField(max_length=255, default='')
@@ -43,5 +43,5 @@ class TaskStatus(models.Model):
 
     class Meta:
         ordering = ('-created_on', )
-        verbose_name = _('Task status')
-        verbose_name_plural = _('Task statuses')
+        verbose_name = _('Job status')
+        verbose_name_plural = _('Job statuses')

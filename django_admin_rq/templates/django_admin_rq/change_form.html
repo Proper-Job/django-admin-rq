@@ -1,0 +1,10 @@
+{% extends 'admin/change_form.html' %}
+
+{% block object-tools-items %}
+{% for job in changeform_jobs %}
+<li>
+    <a href="{{ job.url }}" class="{{ job.css }}">{{ job.title}}</a>
+</li>
+{% endfor %}
+{{ block.super }}
+{% endblock %}

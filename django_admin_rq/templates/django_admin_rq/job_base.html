@@ -1,0 +1,31 @@
+{% extends "admin/base_site.html" %}
+
+{% load i18n admin_urls staticfiles %}
+
+{% block extrahead %}
+    {{ block.super }}
+
+    <link rel="stylesheet" type="text/css" href="{% static 'admin/css/forms.css' %}">
+    <link rel="stylesheet" type="text/css" href="{% static 'django_admin_rq/css/django_admin_rq.css' %}">
+
+    <script type="text/javascript" src="{% static 'admin/js/jquery.min.js' %}"></script>
+    <script type="text/javascript" src="{% static 'admin/js/jquery.init.js' %}"></script>
+    <script type="text/javascript" src="/admin/jsi18n/"></script>
+    <script type="text/javascript" src="{% static 'django_admin_rq/js/django_admin_rq.js' %}"></script>
+
+    {{ form.media }}
+{% endblock %}
+
+{% block breadcrumbs %}
+
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    {% if original %}
+    &rsaquo; <a href="{% url opts|admin_urlname:'change' original.pk|admin_urlquote %}">{{ original|truncatewords:"18" }}</a>
+    {% endif %}
+    &rsaquo; {{ title }}
+</div>
+
+{% endblock %}

@@ -1,0 +1,8 @@
+{% extends 'django_admin_rq/job_base.html' %}
+
+
+{% block content_title %}
+    {% if title %}
+        <h1>{{ title }} &rsaquo;&rsaquo; {% trans 'Complete' %}</h1>
+    {% endif %}
+{% endblock %}

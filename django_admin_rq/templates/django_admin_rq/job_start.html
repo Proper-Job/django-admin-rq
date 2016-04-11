@@ -1,0 +1,30 @@
+{% extends 'django_admin_rq/job_base.html' %}
+
+{% load i18n admin_urls %}
+
+{% block content_title %}
+    {% if title %}
+        <h1>{{ title }} &rsaquo;&rsaquo; {% trans 'Start' %}</h1>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    <form action="{% url opts|admin_urlname:'job_start' job_name=job_name object_id=original.pk %}" method="post" id="{{ job_name }}">
+        {% csrf_token %}
+        <fieldset class="module aligned">
+            {{ form.non_field_errors }}
+            {% for field in form %}
+                <div class="form-row {% if field.errors %}errors{% endif %}">
+                    {{ field.errors }}
+                    {{ field.label_tag }} {{ field }}
+                    {% if field.help_text %}
+                        <p class="help">{{ field.help_text|safe }}</p>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </fieldset>
+        <div class="submit-row">
+            <input type="submit" value="{% trans 'Preview' %}" id="form_submit"/>
+        </div>
+    </form>
+{% endblock %}
