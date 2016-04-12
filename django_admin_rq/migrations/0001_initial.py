@@ -2,6 +2,7 @@
 from __future__ import unicode_literals
 
 from django.db import migrations, models
+import django_admin_rq.models
 
 
 class Migration(migrations.Migration):
@@ -13,19 +14,18 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='JobStatus',
             fields=[
-                ('id', models.AutoField(serialize=False, primary_key=True, auto_created=True, verbose_name='ID')),
+                ('id', models.AutoField(auto_created=True, serialize=False, verbose_name='ID', primary_key=True)),
                 ('created_on', models.DateTimeField(auto_now_add=True)),
                 ('progress', models.PositiveIntegerField(default=0)),
-                ('progress_type', models.CharField(choices=[('indeterminate', 'Indeterminate'), ('determinate', 'Determinate')], max_length=50, default='indeterminate')),
                 ('job_id', models.CharField(max_length=255, default='')),
-                ('job_uuid', models.CharField(max_length=255, default='caea5eae5c2a41ca81e10a11c8f4f31b')),
-                ('status', models.CharField(choices=[('QUEUED', 'Queued'), ('STARTED', 'Started'), ('FINISHED', 'Finished'), ('FAILED', 'Failed')], max_length=128, default='QUEUED')),
+                ('job_uuid', models.CharField(max_length=255, default=django_admin_rq.models._get_uuid)),
+                ('status', models.CharField(choices=[('QUEUED', 'Queued'), ('STARTED', 'Started'), ('FINISHED', 'Finished'), ('FAILED', 'Failed')], default='QUEUED', max_length=128)),
                 ('failure_reason', models.TextField(default='')),
             ],
             options={
                 'verbose_name_plural': 'Job statuses',
-                'ordering': ('-created_on',),
                 'verbose_name': 'Job status',
+                'ordering': ('-created_on',),
             },
         ),
     ]

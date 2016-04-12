@@ -4,6 +4,7 @@ import re
 
 import django_rq
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ImproperlyConfigured
 from django.core.management import call_command
 from django.core.urlresolvers import reverse
 from django.db import transaction
@@ -159,7 +160,7 @@ class JobAdminMixin(object):
         return 'default'
 
     def _get_job_session_key(self, job_name):
-        return 'job_admin_'.format(job_name)
+        return 'django_admin_rq_'.format(job_name)
 
     @csrf_protect_m
     def changelist_view(self, request, extra_context=None):
@@ -231,9 +232,16 @@ class JobAdminMixin(object):
         return data
 
     def get_job_session_data(self, request, job_name):
-        data = []
-        if self._get_job_session_key(job_name) in request.session:
-            for field_data in request.session[self._get_job_session_key(job_name)]:
+        return request.session.get(self._get_job_session_key(job_name), {})
+
+    def set_job_session_data(self, request, job_name, session_data):
+        request.session[self._get_job_session_key(job_name)] = session_data
+
+    def get_job_form_data(self, request, job_name):
+        form_data = []
+        session_data = self.get_job_session_data(request, job_name)
+        if 'form_data' in session_data:
+            for field_data in session_data['form_data']:
                 value = field_data['value']
                 if isinstance(value, six.string_types) and value.startswith('contenttype:'):
                     match = re.search('contenttype:([a-zA-Z]+)\.([a-zA-Z]+):(\d{1,10})', value)
@@ -244,8 +252,8 @@ class JobAdminMixin(object):
                         ).get_object_for_this_type(**{
                             'pk': match.group(3)
                         })
-                data.append(field_data)
-        return data
+                form_data.append(field_data)
+        return form_data
 
     def get_job_context(self, request, job_name, object_id, view_name=None):
         request.current_app = self.admin_site.name
@@ -262,7 +270,7 @@ class JobAdminMixin(object):
                 context['original'] = obj
             except:
                 pass
-        context['job_data'] = self.get_job_session_data(request, job_name)
+        context['job_data'] = self.get_job_form_data(request, job_name)
         return context
 
     def get_job_status_url(self, job_uuid):
@@ -275,9 +283,11 @@ class JobAdminMixin(object):
         if request.method == 'GET':
             form = self.get_job_form_class(job_name)(initial=self.get_job_form_initial(request, job_name))
         else:
-            form = self.get_job_form_class(job_name)(request.POST)
+            form = self.get_job_form_class(job_name)(request.POST, request.FILES)
             if form.is_valid():
-                request.session[self._get_job_session_key(job_name)] = self.serialize_job_form(form, job_name)
+                job_session_data = {}
+                job_session_data['form_data'] = self.serialize_job_form(form, job_name)
+                self.set_job_session_data(request, job_name, job_session_data)
                 url_kwargs = {
                     'job_name': job_name
                 }
@@ -295,16 +305,25 @@ class JobAdminMixin(object):
 
     def job_preview(self, request, job_name='', object_id=None):
         context = self.get_job_context(request, job_name, object_id, view_name='preview')
-        if request.method == 'GET':
+        job_session_data = self.get_job_session_data(request, job_name)
+
+        if 'job_uuid' in job_session_data:
+            job_status = JobStatus.objects.get(job_uuid=job_session_data['job_uuid'])
+            context['job_status'] = job_status.status
+        else:
             job_callable = self.get_preview_job_callable(job_name)
             if callable(job_callable):
                 job_status = JobStatus()
                 job_status.save()
                 job_callable.delay(job_status)
+
                 context['job_running'] = True
                 context['job_status_url'] = self.get_job_status_url(job_status.job_uuid)
-        else:
-            pass
+
+                job_session_data['job_uuid'] = job_status.job_uuid
+                self.set_job_session_data(request, job_name, job_session_data)
+            else:
+                raise ImproperlyConfigured('{}.{} must return a callable'.format(self.__class__.__name__, self.get_preview_job_callable.__name__))
         return TemplateResponse(request, self.get_job_preview_template(job_name), RequestContext(request, context))
 
     def job_run(self, request, job_name='', object_id=None):

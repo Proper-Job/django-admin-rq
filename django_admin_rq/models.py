@@ -4,6 +4,7 @@ from __future__ import unicode_literals
 import uuid
 
 from django.db import models
+from django.utils.encoding import force_text
 from django.utils.six import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 
@@ -21,6 +22,10 @@ STATUS_CHOICES = (
 )
 
 
+def _get_uuid():
+    return uuid.uuid4().hex
+
+
 @python_2_unicode_compatible
 class JobStatus(models.Model):
     """
@@ -29,7 +34,7 @@ class JobStatus(models.Model):
     created_on = models.DateTimeField(auto_now_add=True)
     progress = models.PositiveIntegerField(default=0)
     job_id = models.CharField(max_length=255, default='')
-    job_uuid = models.CharField(max_length=255, default=uuid.uuid4().hex)
+    job_uuid = models.CharField(max_length=255, default=_get_uuid)
     status = models.CharField(max_length=128, choices=STATUS_CHOICES, default=STATUS_QUEUED)
     failure_reason = models.TextField(default='')
 
@@ -39,12 +44,17 @@ class JobStatus(models.Model):
     def start(self, save=True):
         self.status = STATUS_STARTED
         if save:
-            self.save(update_fields=['status'])
+            self.save()
 
     def finish(self, save=True):
         self.status = STATUS_FINISHED
         if save:
-            self.save(update_fields=['status'])
+            self.save()
+
+    def fail(self, save=True):
+        self.status = STATUS_FAILED
+        if save:
+            self.save()
 
     class Meta:
         ordering = ('-created_on', )

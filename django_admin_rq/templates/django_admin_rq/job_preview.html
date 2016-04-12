@@ -22,8 +22,18 @@
     </div>
 
     <div id="progress-container">
-        <p id="progress-label">{% blocktrans %}Preview is being generated for {{ title }}{% endblocktrans %}</p>
-        <progress id="progress-bar" max="100"></progress>
+        <p id="progress-label">
+            {% if job_status == 'FINISHED' %}
+                {% blocktrans %}Preview of {{ title }}{% endblocktrans %}
+            {% elif job_status == 'FAILED' %}
+                {% blocktrans %}Preview generation failed for {{ title }}{% endblocktrans %}
+            {% else %}
+                {% blocktrans %}Preview is being generated for {{ title }}{% endblocktrans %}
+            {% endif %}
+        </p>
+        {% if not job_status %}
+            <progress id="progress-bar" max="100"></progress>
+        {% endif %}
     </div>
 
     <div class="preview-content module aligned">

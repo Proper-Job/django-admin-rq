@@ -22,13 +22,13 @@
                             if (data.hasOwnProperty('status')) {
                                 if (data.status === 'FINISHED' || data.status === 'FAILED') {
                                     clearInterval(timerId);
+                                    location.reload();
                                 }
-
-                                // location.reload();
                             }
                         },
                         error: function(jqXHR, textStatus, errorThrown) {
                             clearInterval(timerId);
+                            location.reload();
                         }
                     });
                 }, 500);
