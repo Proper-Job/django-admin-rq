@@ -10,6 +10,8 @@
 
 
 {% block content %}
+    {{ block.super }}
+
     <div class="module aligned">
         {% for field_data in job_data %}
             <div class="form-row">
@@ -17,6 +19,11 @@
                 <p>{{ field_data.value }}</p>
             </div>
         {% endfor %}
+    </div>
+
+    <div id="progress-container">
+        <p id="progress-label">{% blocktrans %}Preview is being generated for {{ title }}{% endblocktrans %}</p>
+        <progress id="progress-bar" max="100"></progress>
     </div>
 
     <div class="preview-content module aligned">

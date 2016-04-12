@@ -1,7 +1,10 @@
 from functools import update_wrapper
 
 import re
+
+import django_rq
 from django.contrib.contenttypes.models import ContentType
+from django.core.management import call_command
 from django.core.urlresolvers import reverse
 from django.db import transaction
 from django.db.models import Model
@@ -14,6 +17,8 @@ from django.utils.translation import ugettext_lazy as _
 from django.contrib import admin
 from django.views.decorators.csrf import csrf_protect
 from django.utils import six
+
+from django_admin_rq.models import JobStatus
 
 csrf_protect_m = method_decorator(csrf_protect)
 
@@ -129,6 +134,30 @@ class JobAdminMixin(object):
         """
         return 'django_admin_rq/job_complete.html'
 
+    def get_preview_job_callable(self, job_name):
+        """
+        Returns the function decorated with :func:`~django_rq.job` that runs the preview async job.
+        """
+        return None
+
+    def get_run_job_callable(self, job_name):
+        """
+        Returns the function decorated with :func:`~django_rq.job` that runs the main async job.
+        """
+        return None
+
+    def get_preview_queue(self, job_name):
+        """
+        Returns the queue name for the preview job
+        """
+        return 'default'
+
+    def get_run_queue(self, job_name):
+        """
+        Returns the queue name for the main job
+        """
+        return 'default'
+
     def _get_job_session_key(self, job_name):
         return 'job_admin_'.format(job_name)
 
@@ -236,6 +265,9 @@ class JobAdminMixin(object):
         context['job_data'] = self.get_job_session_data(request, job_name)
         return context
 
+    def get_job_status_url(self, job_uuid):
+        return reverse('admin-rq-job-status', kwargs={'job_uuid': job_uuid})
+
     def job_start(self, request, job_name='', object_id=None):
         context = self.get_job_context(request, job_name, object_id, view_name='start')
         info = self.model._meta.app_label, self.model._meta.model_name
@@ -263,6 +295,16 @@ class JobAdminMixin(object):
 
     def job_preview(self, request, job_name='', object_id=None):
         context = self.get_job_context(request, job_name, object_id, view_name='preview')
+        if request.method == 'GET':
+            job_callable = self.get_preview_job_callable(job_name)
+            if callable(job_callable):
+                job_status = JobStatus()
+                job_status.save()
+                job_callable.delay(job_status)
+                context['job_running'] = True
+                context['job_status_url'] = self.get_job_status_url(job_status.job_uuid)
+        else:
+            pass
         return TemplateResponse(request, self.get_job_preview_template(job_name), RequestContext(request, context))
 
     def job_run(self, request, job_name='', object_id=None):

@@ -7,3 +7,7 @@
         <h1>{{ title }} &rsaquo;&rsaquo; {% trans 'Run' %}</h1>
     {% endif %}
 {% endblock %}
+
+{% block content %}
+    {{ block.super }}
+{% endblock %}
