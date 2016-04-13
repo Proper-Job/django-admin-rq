@@ -1,13 +1,54 @@
 {% extends 'django_admin_rq/job_base.html' %}
 
-{% load i18n %}
+{% load i18n admin_urls %}
 
 {% block content_title %}
     {% if title %}
-        <h1>{{ title }} &rsaquo;&rsaquo; {% trans 'Run' %}</h1>
+        <h1>{{ title }} &rsaquo;&rsaquo; {% trans 'Preview' %}</h1>
     {% endif %}
 {% endblock %}
 
+
 {% block content %}
     {{ block.super }}
+
+    <div class="module aligned">
+        {% for field_data in job_form_data %}
+            <div class="form-row">
+                <label>{% if field_data.label %}{{ field_data.label }}{% else %}{{ field_data.name|capfirst }}{% endif %}:</label>
+                <p>{{ field_data.value }}</p>
+            </div>
+        {% endfor %}
+    </div>
+
+    <div id="progress-container">
+        <p id="progress-label">
+            {% if job_status.is_finished %}
+                {% blocktrans %}{{ title }} preview{% endblocktrans %}
+            {% elif job_status.is_failed %}
+                {% blocktrans %}Preview generation failed for {{ title }}{% endblocktrans %}
+            {% else %}
+                {% blocktrans %}Preview is being generated for {{ title }}{% endblocktrans %}
+            {% endif %}
+        </p>
+        {% if job_status.is_queued or job_status.is_started %}
+            <progress id="progress-bar" max="100"></progress>
+        {% endif %}
+    </div>
+
+    <div class="job-content module aligned">
+        {% block job_content %}{% endblock %}
+    </div>
+
+    <div class="submit-row">
+        {% if preview %}
+            <a class="button inline" href="{% url opts|admin_urlname:'job_run' job_name=job_name view_name=main_view object_id=original.pk %}">
+                {% trans 'Run job' %}
+            </a>
+        {% else %}
+            <a class="button inline" href="{% url opts|admin_urlname:'job_complete' job_name=job_name object_id=original.pk %}">
+                {% trans 'Finish' %}
+            </a>
+        {% endif %}
+    </div>
 {% endblock %}

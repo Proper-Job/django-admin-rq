@@ -1,27 +1,33 @@
+# -*- coding: utf-8 -*-
+import re
+import copy
+from collections import OrderedDict
 from functools import update_wrapper
 
-import re
-
-import django_rq
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured
-from django.core.management import call_command
 from django.core.urlresolvers import reverse
 from django.db import transaction
-from django.db.models import Model
-from django.forms import ModelForm
+from django.db import models
 from django.http import HttpResponseRedirect
 from django.template import RequestContext
 from django.template.response import TemplateResponse
-from django.utils.decorators import method_decorator
-from django.utils.translation import ugettext_lazy as _
-from django.contrib import admin
-from django.views.decorators.csrf import csrf_protect
 from django.utils import six
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_protect
 
 from django_admin_rq.models import JobStatus
+from django.utils.encoding import force_text
 
 csrf_protect_m = method_decorator(csrf_protect)
+
+_CONTENT_TYPE_PREFIX = 'contenttype:'
+_CONTENT_TYPE_RE_PATTERN = 'contenttype:([a-zA-Z-_]+)\.([a-zA-Z]+):(\d{1,10})'
+
+START_VIEW = 'start'
+PREVIEW_VIEW = 'preview'
+MAIN_VIEW = 'main'
+COMPLETE_VIEW = 'complete'
 
 
 class JobAdminMixin(object):
@@ -44,12 +50,7 @@ class JobAdminMixin(object):
                 name='%s_%s_job_start' % info
             ),
             url(
-                r'^job/(?P<job_name>[a-zA-Z-_]+)/preview/(?P<object_id>\d{1,10})?$',
-                wrap(self.job_preview),
-                name='%s_%s_job_preview' % info
-            ),
-            url(
-                r'^job/(?P<job_name>[a-zA-Z-_]+)/run/(?P<object_id>\d{1,10})?$',
+                r'^job/(?P<job_name>[a-zA-Z-_]+)/(?P<view_name>(preview|main))/(?P<object_id>\d{1,10})?$',
                 wrap(self.job_run),
                 name='%s_%s_job_run' % info
             ),
@@ -117,15 +118,9 @@ class JobAdminMixin(object):
         """
         return 'django_admin_rq/job_start.html'
 
-    def get_job_preview_template(self, job_name):
+    def get_job_run_template(self, job_name, preview=True):
         """
-        Returns the template for this job's preview page
-        """
-        return 'django_admin_rq/job_preview.html'
-
-    def get_job_run_template(self, job_name):
-        """
-        Returns the template for this job's run page
+        Returns the template for this job's run page.
         """
         return 'django_admin_rq/job_run.html'
 
@@ -135,15 +130,10 @@ class JobAdminMixin(object):
         """
         return 'django_admin_rq/job_complete.html'
 
-    def get_preview_job_callable(self, job_name):
+    def get_job_callable(self, job_name, preview=True):
         """
-        Returns the function decorated with :func:`~django_rq.job` that runs the preview async job.
-        """
-        return None
-
-    def get_run_job_callable(self, job_name):
-        """
-        Returns the function decorated with :func:`~django_rq.job` that runs the main async job.
+        Returns the function decorated with :func:`~django_rq.job` that runs the run async job for this view.
+        view_name is either 'preview' or 'main'
         """
         return None
 
@@ -208,7 +198,7 @@ class JobAdminMixin(object):
         })
         return super(JobAdminMixin, self).changeform_view(request, object_id=object_id, form_url=form_url, extra_context=extra_context)
 
-    def serialize_job_form(self, form, job_name):
+    def serialize_form(self, form):
         """
         Given this job's bound form return the form's data as a session serializable object
         The field order is preserved from the original form
@@ -217,45 +207,91 @@ class JobAdminMixin(object):
         for field_name, field in form.fields.items():
             if field_name in form.cleaned_data:
                 form_value = form.cleaned_data[field_name]
-                if isinstance(form_value, Model):
+                if isinstance(form_value, models.Model):
                     ctype = ContentType.objects.get_for_model(form_value)
-                    form_value = 'contenttype:{0}.{1}:{2}'.format(
+                    form_value = '{0}{1}.{2}:{3}'.format(
+                        _CONTENT_TYPE_PREFIX,
                         ctype.app_label,
                         ctype.model,
                         form_value.pk
                     )
                 data.append({
                     'name': field_name,
-                    'label': field.label,
+                    'label': force_text(field.label),
                     'value': form_value,
                 })
         return data
 
-    def get_job_session_data(self, request, job_name):
+    def get_session_data(self, request, job_name):
         return request.session.get(self._get_job_session_key(job_name), {})
 
-    def set_job_session_data(self, request, job_name, session_data):
-        request.session[self._get_job_session_key(job_name)] = session_data
-
-    def get_job_form_data(self, request, job_name):
+    def get_session_form_data(self, request, job_name):
+        """
+        Retrieve form data that was serialized to the session in :func:`~django_admin_rq.admin.JobAdminMixin.job_start`
+        Values prefixed with 'contenttype:' are replace with the instantiated Model versions.
+        """
         form_data = []
-        session_data = self.get_job_session_data(request, job_name)
-        if 'form_data' in session_data:
-            for field_data in session_data['form_data']:
-                value = field_data['value']
-                if isinstance(value, six.string_types) and value.startswith('contenttype:'):
-                    match = re.search('contenttype:([a-zA-Z]+)\.([a-zA-Z]+):(\d{1,10})', value)
-                    if match:
-                        field_data['value'] = ContentType.objects.get(
-                            app_label=match.group(1),
-                            model=match.group(2)
-                        ).get_object_for_this_type(**{
-                            'pk': match.group(3)
-                        })
-                form_data.append(field_data)
+        serialized_data = self.get_session_data(request, job_name).get('form_data', [])
+
+        for field_data in copy.deepcopy(serialized_data):  # Don't modify the serialized session data
+            value = field_data['value']
+            if isinstance(value, six.string_types) and value.startswith(_CONTENT_TYPE_PREFIX):
+                match = re.search(_CONTENT_TYPE_RE_PATTERN, value)
+                if match:
+                    field_data['value'] = ContentType.objects.get(
+                        app_label=match.group(1),
+                        model=match.group(2)
+                    ).get_object_for_this_type(**{
+                        'pk': match.group(3)
+                    })
+            form_data.append(field_data)
+
         return form_data
 
-    def get_job_context(self, request, job_name, object_id, view_name=None):
+    def get_session_form_data_as_dict(self, request, job_name):
+        """
+        Convenience method to have the form data like form.cleaned_data
+        """
+        data_dict = OrderedDict()
+        for value_dict in self.get_session_form_data(request, job_name):
+            data_dict[value_dict['name']] = value_dict['value']
+        return data_dict
+
+    def set_session_job_status(self, request, job_name, job_status, view_name):
+        """
+        Serializes the given :class:`~django_admin_rq.models.JobStatus` to this job's session.
+        """
+        if isinstance(job_status, JobStatus) and job_status.pk:
+            ctype = ContentType.objects.get_for_model(job_status)
+            status = '{0}{1}.{2}:{3}'.format(_CONTENT_TYPE_PREFIX, ctype.app_label, ctype.model, job_status.pk)
+            session_data = self.get_session_data(request, job_name)
+            session_data['{}_job_status'.format(view_name)] = status
+            request.session.modified = True
+        else:
+            raise ValueError('job_status must be an instance of {} that has a valid pk.'.format(JobStatus.__class__.__name__))
+
+    def get_session_job_status(self, request, job_name, view_name):
+        """
+        Returns an instance of :class:`~django_admin_rq.models.JobStatus` representing the status for the given view.
+        Returns None if the reference is missing from the session.
+        """
+        session_data = self.get_session_data(request, job_name)
+        status = session_data.get('{}_job_status'.format(view_name), None)
+        if status is not None and isinstance(status, six.string_types) and status.startswith(_CONTENT_TYPE_PREFIX):
+            match = re.search(_CONTENT_TYPE_RE_PATTERN, status)
+            if match:
+                return ContentType.objects.get(
+                    app_label=match.group(1),
+                    model=match.group(2)
+                ).get_object_for_this_type(**{
+                    'pk': match.group(3)
+                })
+        return None
+
+    def get_job_context(self, request, job_name, object_id, view_name):
+        """
+        Returns the context for all django-admin-rq view (start|preview|main|complete)
+        """
         request.current_app = self.admin_site.name
         context = dict(
             self.admin_site.each_context(request),
@@ -263,6 +299,13 @@ class JobAdminMixin(object):
             app_label=self.model._meta.app_label,
             title=self.get_job_title(job_name),
             job_name=job_name,
+            view_name=view_name,
+            start_view=START_VIEW,
+            preview_view=PREVIEW_VIEW,
+            main_view=MAIN_VIEW,
+            complete_view=COMPLETE_VIEW,
+            job_form_data=self.get_session_form_data(request, job_name),
+            preview=view_name == PREVIEW_VIEW
         )
         if object_id:
             try:
@@ -270,14 +313,10 @@ class JobAdminMixin(object):
                 context['original'] = obj
             except:
                 pass
-        context['job_data'] = self.get_job_form_data(request, job_name)
         return context
 
-    def get_job_status_url(self, job_uuid):
-        return reverse('admin-rq-job-status', kwargs={'job_uuid': job_uuid})
-
     def job_start(self, request, job_name='', object_id=None):
-        context = self.get_job_context(request, job_name, object_id, view_name='start')
+        context = self.get_job_context(request, job_name, object_id, START_VIEW)
         info = self.model._meta.app_label, self.model._meta.model_name
 
         if request.method == 'GET':
@@ -285,17 +324,20 @@ class JobAdminMixin(object):
         else:
             form = self.get_job_form_class(job_name)(request.POST, request.FILES)
             if form.is_valid():
-                job_session_data = {}
-                job_session_data['form_data'] = self.serialize_job_form(form, job_name)
-                self.set_job_session_data(request, job_name, job_session_data)
+                # Save the serialized form data to the session
+                session_data = {}
+                session_data['form_data'] = self.serialize_form(form)
+                request.session[self._get_job_session_key(job_name)] = session_data
+
                 url_kwargs = {
-                    'job_name': job_name
+                    'job_name': job_name,
+                    'view_name': PREVIEW_VIEW,
                 }
                 if object_id:
                     url_kwargs['object_id'] = object_id
                 return HttpResponseRedirect(
                     reverse(
-                        'admin:%s_%s_job_preview' % info,
+                        'admin:%s_%s_job_run' % info,
                         kwargs=url_kwargs,
                         current_app=self.admin_site.name
                     )
@@ -303,33 +345,25 @@ class JobAdminMixin(object):
         context['form'] = form
         return TemplateResponse(request, self.get_job_start_template(job_name), RequestContext(request, context))
 
-    def job_preview(self, request, job_name='', object_id=None):
-        context = self.get_job_context(request, job_name, object_id, view_name='preview')
-        job_session_data = self.get_job_session_data(request, job_name)
+    def job_run(self, request, job_name='', object_id=None, view_name=PREVIEW_VIEW):
+        context = self.get_job_context(request, job_name, object_id, view_name)
+        preview = view_name == PREVIEW_VIEW
 
-        if 'job_uuid' in job_session_data:
-            job_status = JobStatus.objects.get(job_uuid=job_session_data['job_uuid'])
-            context['job_status'] = job_status.status
-        else:
-            job_callable = self.get_preview_job_callable(job_name)
+        # job_status is None when no job has been started
+        job_status = self.get_session_job_status(request, job_name, view_name)
+        if job_status is None:
+            job_callable = self.get_job_callable(job_name, preview=preview)
             if callable(job_callable):
                 job_status = JobStatus()
                 job_status.save()
-                job_callable.delay(job_status)
-
-                context['job_running'] = True
-                context['job_status_url'] = self.get_job_status_url(job_status.job_uuid)
-
-                job_session_data['job_uuid'] = job_status.job_uuid
-                self.set_job_session_data(request, job_name, job_session_data)
-            else:
-                raise ImproperlyConfigured('{}.{} must return a callable'.format(self.__class__.__name__, self.get_preview_job_callable.__name__))
-        return TemplateResponse(request, self.get_job_preview_template(job_name), RequestContext(request, context))
-
-    def job_run(self, request, job_name='', object_id=None):
-        context = self.get_job_context(request, job_name, object_id, view_name='run')
-        return TemplateResponse(request, self.get_job_run_template(job_name), RequestContext(request, context))
+                self.set_session_job_status(request, job_name, job_status, view_name)
+                context['job_status'] = job_status
+                context['job_status_url'] = job_status.url()  # The frontend starts polling the status url if it's present
+                job_callable.delay(job_status, self.get_session_form_data_as_dict(request, job_name))
+        else:
+            context['job_status'] = job_status
+        return TemplateResponse(request, self.get_job_run_template(job_name, preview=preview), RequestContext(request, context))
 
     def job_complete(self, request, job_name='', object_id=None):
-        context = self.get_job_context(request, job_name, object_id, view_name='complete')
+        context = self.get_job_context(request, job_name, object_id, COMPLETE_VIEW)
         return TemplateResponse(request, self.get_job_complete_template(job_name), RequestContext(request, context))

@@ -31,10 +31,5 @@
 {% endblock %}
 
 {% block content %}
-    <div
-            id="job-status"
-            {% if job_running %}data-job-running="true"{% endif %}
-            {% if job_status_url %}data-job-status-url="{{ job_status_url }}"{% endif %}>
-    </div>
-
+    <div id="job-status" {% if job_status_url %}data-job-status-url="{{ job_status_url }}"{% endif %}></div>
 {% endblock %}

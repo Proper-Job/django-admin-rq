@@ -3,12 +3,10 @@
         var jobStatus = $("#job-status");
 
         if (jobStatus.length > 0) {
-            var jobRunning = jobStatus.data('job-running'),
-                statusUrl = jobStatus.data('job-status-url'),
-                progressBar = $("#progress-bar"),
-                timerId;
-            if (jobRunning && statusUrl) {
-                timerId = setInterval(function() {
+            var statusUrl = jobStatus.data('job-status-url'),
+                progressBar = $("#progress-bar");
+            if (statusUrl.length > 0) {
+                var timerId = setInterval(function() {
                     $.ajax({
                         type: "GET",
                         url: statusUrl,
@@ -31,7 +29,7 @@
                             location.reload();
                         }
                     });
-                }, 500);
+                }, 750);
             }
         }
     });

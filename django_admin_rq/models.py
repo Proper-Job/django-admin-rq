@@ -3,8 +3,9 @@ from __future__ import unicode_literals
 
 import uuid
 
+from django.core.urlresolvers import reverse
 from django.db import models
-from django.utils.encoding import force_text
+from django.utils import six
 from django.utils.six import python_2_unicode_compatible
 from django.utils.translation import ugettext_lazy as _
 
@@ -36,10 +37,14 @@ class JobStatus(models.Model):
     job_id = models.CharField(max_length=255, default='')
     job_uuid = models.CharField(max_length=255, default=_get_uuid)
     status = models.CharField(max_length=128, choices=STATUS_CHOICES, default=STATUS_QUEUED)
+    result = models.TextField(default='')
     failure_reason = models.TextField(default='')
 
     def __str__(self):
         return self.job_uuid
+
+    def url(self):
+        return reverse('admin-rq-job-status', kwargs={'job_uuid': self.job_uuid})
 
     def start(self, save=True):
         self.status = STATUS_STARTED
@@ -55,6 +60,26 @@ class JobStatus(models.Model):
         self.status = STATUS_FAILED
         if save:
             self.save()
+
+    def set_result(self, result, save=True):
+        if isinstance(result, six.string_types):
+            self.result = result
+            if save:
+                self.save()
+        else:
+            raise ValueError('Result must be a string type.')
+
+    def is_queued(self):
+        return self.status == STATUS_QUEUED
+
+    def is_started(self):
+        return self.status == STATUS_STARTED
+
+    def is_finished(self):
+        return self.status == STATUS_FINISHED
+
+    def is_failed(self):
+        return self.status == STATUS_FAILED
 
     class Meta:
         ordering = ('-created_on', )
