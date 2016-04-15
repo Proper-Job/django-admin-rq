@@ -4,7 +4,14 @@
 
 {% block content_title %}
     {% if title %}
-        <h1>{{ title }} &rsaquo;&rsaquo; {% trans 'Preview' %}</h1>
+        <h1>
+            {{ title }} &rsaquo;&rsaquo;
+            {% if preview %}
+                {% trans 'Preview' %}
+            {% else %}
+                {% trans 'Run' %}
+            {% endif %}
+        </h1>
     {% endif %}
 {% endblock %}
 
@@ -13,7 +20,8 @@
     {{ block.super }}
 
     <div class="module aligned">
-        {% for field_data in job_form_data %}
+        <h2>{% trans 'Form data' %}</h2>
+        {% for field_data in form_data_list %}
             <div class="form-row">
                 <label>{% if field_data.label %}{{ field_data.label }}{% else %}{{ field_data.name|capfirst }}{% endif %}:</label>
                 <p>{{ field_data.value }}</p>
@@ -21,24 +29,28 @@
         {% endfor %}
     </div>
 
-    <div id="progress-container">
-        <p id="progress-label">
-            {% if job_status.is_finished %}
-                {% blocktrans %}{{ title }} preview{% endblocktrans %}
-            {% elif job_status.is_failed %}
-                {% blocktrans %}Preview generation failed for {{ title }}{% endblocktrans %}
-            {% else %}
-                {% blocktrans %}Preview is being generated for {{ title }}{% endblocktrans %}
+    {% if job_status %}
+        <div id="progress-container">
+            <p id="progress-label">
+                {% if job_status.is_finished %}
+                    {{ title }} {% trans 'finished' %}
+                {% elif job_status.is_failed %}
+                    {{ title }} {% trans 'failed' %}
+                {% else %}
+                    {% if preview %}
+                        {% blocktrans %}Preview is being generated for {{ title }}{% endblocktrans %}
+                    {% else %}
+                        {% blocktrans %}{{ title }} is running{% endblocktrans %}
+                    {% endif %}
+                {% endif %}
+            </p>
+            {% if job_status.is_queued or job_status.is_started %}
+                <progress id="progress-bar" max="100"></progress>
             {% endif %}
-        </p>
-        {% if job_status.is_queued or job_status.is_started %}
-            <progress id="progress-bar" max="100"></progress>
-        {% endif %}
-    </div>
+        </div>
+    {% endif %}
 
-    <div class="job-content module aligned">
-        {% block job_content %}{% endblock %}
-    </div>
+    {% block job_content %}{% endblock %}
 
     <div class="submit-row">
         {% if preview %}

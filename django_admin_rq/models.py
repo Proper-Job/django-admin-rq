@@ -69,6 +69,11 @@ class JobStatus(models.Model):
         else:
             raise ValueError('Result must be a string type.')
 
+    def set_progress(self, progress, save=True):
+        self.progress = int(progress)
+        if save:
+            self.save()
+
     def is_queued(self):
         return self.status == STATUS_QUEUED
 

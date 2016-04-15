@@ -5,7 +5,7 @@
         if (jobStatus.length > 0) {
             var statusUrl = jobStatus.data('job-status-url'),
                 progressBar = $("#progress-bar");
-            if (statusUrl.length > 0) {
+            if (statusUrl) {
                 var timerId = setInterval(function() {
                     $.ajax({
                         type: "GET",

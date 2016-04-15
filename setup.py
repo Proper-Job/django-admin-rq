@@ -27,5 +27,5 @@ setup(
         'Topic :: Internet :: WWW/HTTP',
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content',
     ],
-    install_requires=['django-rq>=0.9.0', 'django>=1.8', 'djangorestframework>=3.3.0']
+    install_requires=['django-rq >= 0.9.0', 'django>=1.8', 'djangorestframework>=3.3.0']
 )
