@@ -42,7 +42,7 @@
 
     <div class="submit-row">
         {% if preview %}
-            <a class="button inline" href="{% url opts|admin_urlname:'job_run' job_name=job_name view_name=main_view object_id=original.pk %}">
+            <a class="button inline" href="{% url opts|admin_urlname:'job_run' job_name=job_name view_name=main_run_view object_id=original.pk %}">
                 {% trans 'Run job' %}
             </a>
         {% else %}

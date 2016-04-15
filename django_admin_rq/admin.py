@@ -4,6 +4,7 @@ import copy
 from collections import OrderedDict
 from functools import update_wrapper
 
+from django import forms
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured
 from django.core.urlresolvers import reverse
@@ -24,9 +25,9 @@ csrf_protect_m = method_decorator(csrf_protect)
 _CONTENT_TYPE_PREFIX = 'contenttype:'
 _CONTENT_TYPE_RE_PATTERN = 'contenttype:([a-zA-Z-_]+)\.([a-zA-Z]+):(\d{1,10})'
 
-START_VIEW = 'start'
-PREVIEW_VIEW = 'preview'
-MAIN_VIEW = 'main'
+FORM_VIEW = 'form'
+PREVIEW_RUN_VIEW = 'preview_run'
+MAIN_RUN_VIEW = 'main_run'
 COMPLETE_VIEW = 'complete'
 
 
@@ -45,12 +46,12 @@ class JobAdminMixin(object):
 
         job_urls = [
             url(
-                r'^job/(?P<job_name>[a-zA-Z-_]+)/start/(?P<object_id>\d{1,10})?$',
-                wrap(self.job_start),
-                name='%s_%s_job_start' % info
+                r'^job/(?P<job_name>[a-zA-Z-_]+)/form/(?P<object_id>\d{1,10})?$',
+                wrap(self.job_form),
+                name='%s_%s_job_form' % info
             ),
             url(
-                r'^job/(?P<job_name>[a-zA-Z-_]+)/(?P<view_name>(preview|main))/(?P<object_id>\d{1,10})?$',
+                r'^job/(?P<job_name>[a-zA-Z-_]+)/(?P<view_name>(preview_run|main_run))/(?P<object_id>\d{1,10})?$',
                 wrap(self.job_run),
                 name='%s_%s_job_run' % info
             ),
@@ -112,11 +113,11 @@ class JobAdminMixin(object):
         """
         return True
 
-    def get_job_start_template(self, job_name):
+    def get_job_form_template(self, job_name):
         """
         Returns the template for this job's start page
         """
-        return 'django_admin_rq/job_start.html'
+        return 'django_admin_rq/job_form.html'
 
     def get_job_run_template(self, job_name, preview=True):
         """
@@ -137,17 +138,34 @@ class JobAdminMixin(object):
         """
         return None
 
-    def get_preview_queue(self, job_name):
+    def get_job_media(self, job_name):
         """
-        Returns the queue name for the preview job
+        Returns an instance of :class:`django.forms.widgets.Media` used to inject extra css and js into the workflow
+        templates.
+        return forms.Media(
+            js = (
+                'app_label/js/app_labe.js',
+            ),
+            css = {
+                'all': (
+                    'app_label/css/app_label.css',
+                ),
+            }
+        )
         """
-        return 'default'
+        return None
 
-    def get_run_queue(self, job_name):
-        """
-        Returns the queue name for the main job
-        """
-        return 'default'
+    def is_form_view(self, view_name):
+        return view_name == FORM_VIEW
+
+    def is_preview_run_view(self, view_name):
+        return view_name == PREVIEW_RUN_VIEW
+
+    def is_main_run_view(self, view_name):
+        return view_name == MAIN_RUN_VIEW
+
+    def is_complete_view(self, view_name):
+        return view_name == COMPLETE_VIEW
 
     def _get_job_session_key(self, job_name):
         return 'django_admin_rq_'.format(job_name)
@@ -166,7 +184,7 @@ class JobAdminMixin(object):
                 }
                 jobs.append({
                     'title': self.get_job_title(job_name),
-                    'url': reverse('admin:%s_%s_job_start' % info, kwargs=url_kwargs, current_app=self.admin_site.name),
+                    'url': reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name),
                     'css': ' '.join(self.get_changelist_link_css(job_name))
                 })
         extra_context.update({
@@ -190,7 +208,7 @@ class JobAdminMixin(object):
                 }
                 jobs.append({
                     'title': self.get_job_title(job_name),
-                    'url': reverse('admin:%s_%s_job_start' % info, kwargs=url_kwargs, current_app=self.admin_site.name),
+                    'url': reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name),
                     'css': ' '.join(self.get_changeform_link_css(job_name))
                 })
         extra_context.update({
@@ -227,7 +245,7 @@ class JobAdminMixin(object):
 
     def get_session_form_data(self, request, job_name):
         """
-        Retrieve form data that was serialized to the session in :func:`~django_admin_rq.admin.JobAdminMixin.job_start`
+        Retrieve form data that was serialized to the session in :func:`~django_admin_rq.admin.JobAdminMixin.job_form`
         Values prefixed with 'contenttype:' are replace with the instantiated Model versions.
         """
         form_data = []
@@ -300,12 +318,13 @@ class JobAdminMixin(object):
             title=self.get_job_title(job_name),
             job_name=job_name,
             view_name=view_name,
-            start_view=START_VIEW,
-            preview_view=PREVIEW_VIEW,
-            main_view=MAIN_VIEW,
+            form_view=FORM_VIEW,
+            preview_run_view=PREVIEW_RUN_VIEW,
+            main_run_view=MAIN_RUN_VIEW,
             complete_view=COMPLETE_VIEW,
             job_form_data=self.get_session_form_data(request, job_name),
-            preview=view_name == PREVIEW_VIEW
+            preview=view_name == PREVIEW_RUN_VIEW,
+            job_media=self.get_job_media(job_name)
         )
         if object_id:
             try:
@@ -315,8 +334,8 @@ class JobAdminMixin(object):
                 pass
         return context
 
-    def job_start(self, request, job_name='', object_id=None):
-        context = self.get_job_context(request, job_name, object_id, START_VIEW)
+    def job_form(self, request, job_name='', object_id=None):
+        context = self.get_job_context(request, job_name, object_id, FORM_VIEW)
         info = self.model._meta.app_label, self.model._meta.model_name
 
         if request.method == 'GET':
@@ -331,7 +350,7 @@ class JobAdminMixin(object):
 
                 url_kwargs = {
                     'job_name': job_name,
-                    'view_name': PREVIEW_VIEW,
+                    'view_name': PREVIEW_RUN_VIEW,
                 }
                 if object_id:
                     url_kwargs['object_id'] = object_id
@@ -343,11 +362,11 @@ class JobAdminMixin(object):
                     )
                 )
         context['form'] = form
-        return TemplateResponse(request, self.get_job_start_template(job_name), RequestContext(request, context))
+        return TemplateResponse(request, self.get_job_form_template(job_name), RequestContext(request, context))
 
-    def job_run(self, request, job_name='', object_id=None, view_name=PREVIEW_VIEW):
+    def job_run(self, request, job_name='', object_id=None, view_name=PREVIEW_RUN_VIEW):
         context = self.get_job_context(request, job_name, object_id, view_name)
-        preview = view_name == PREVIEW_VIEW
+        preview = view_name == PREVIEW_RUN_VIEW
 
         # job_status is None when no job has been started
         job_status = self.get_session_job_status(request, job_name, view_name)
