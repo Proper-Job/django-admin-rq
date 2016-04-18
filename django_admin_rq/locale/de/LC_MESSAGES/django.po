@@ -1,0 +1,96 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2016-04-18 10:51+0200\n"
+"PO-Revision-Date: 2016-04-18 10:53+0200\n"
+"Last-Translator: Moritz Pfeiffer <moritz.pfeiffer@alp-phone.ch>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+"X-Generator: Poedit 1.8.7\n"
+
+#: models.py:19
+msgid "Queued"
+msgstr "Wartet"
+
+#: models.py:20
+msgid "Started"
+msgstr "Läuft"
+
+#: models.py:21
+msgid "Finished"
+msgstr "Fertig"
+
+#: models.py:22
+msgid "Failed"
+msgstr "Fehlgeschlagen"
+
+#: models.py:91
+msgid "Job status"
+msgstr "Job Status"
+
+#: models.py:92
+msgid "Job statuses"
+msgstr "Job Stati"
+
+#: templates/django_admin_rq/job_base.html:23
+msgid "Home"
+msgstr "Start"
+
+#: templates/django_admin_rq/job_complete.html:7
+msgid "Complete"
+msgstr "Abgeschlossen"
+
+#: templates/django_admin_rq/job_form.html:7
+msgid "Form"
+msgstr "Formular"
+
+#: templates/django_admin_rq/job_form.html:29
+#: templates/django_admin_rq/job_run.html:10
+msgid "Preview"
+msgstr "Vorschau"
+
+#: templates/django_admin_rq/job_run.html:12
+#: templates/django_admin_rq/job_run.html:59
+msgid "Run"
+msgstr "Ausführen"
+
+#: templates/django_admin_rq/job_run.html:23
+msgid "Form data"
+msgstr "Formulardaten"
+
+#: templates/django_admin_rq/job_run.html:36
+msgid "finished"
+msgstr "ist abgeschlossen"
+
+#: templates/django_admin_rq/job_run.html:38
+msgid "failed"
+msgstr "ist fehlgeschlagen"
+
+#: templates/django_admin_rq/job_run.html:41
+#, python-format
+msgid "Preview is being generated for %(title)s"
+msgstr "Vorschau wird erstellt für %(title)s"
+
+#: templates/django_admin_rq/job_run.html:43
+#, python-format
+msgid "%(title)s is running"
+msgstr "%(title)s wird ausgeführt"
+
+#: templates/django_admin_rq/job_run.html:63
+msgid "Continue"
+msgstr "Weiter"
+
+#: templates/django_admin_rq/job_run.html:65
+#: templates/django_admin_rq/job_run.html:67
+msgid "Done"
+msgstr "Fertig"

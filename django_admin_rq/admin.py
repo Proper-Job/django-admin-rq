@@ -170,21 +170,41 @@ class JobAdminMixin(object):
     def _get_job_session_key(self, job_name):
         return 'django_admin_rq_'.format(job_name)
 
+    def get_workflow_views(self, job_name):
+        """
+        Returns the view names included in the workflow for this job.
+        At minimum the main view has to be part of the workflow.  All other views can be ommitted.
+        The order of the views is immutable: form, preview, main, complete
+        """
+        return FORM_VIEW, PREVIEW_RUN_VIEW, MAIN_RUN_VIEW, COMPLETE_VIEW
+
+    def get_workflow_start_url(self, job_name, object_id=None):
+        info = self.model._meta.app_label, self.model._meta.model_name
+        url_kwargs = {
+            'job_name': job_name,
+        }
+        if FORM_VIEW in self.get_workflow_views(job_name):
+            return reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+        else:
+            if PREVIEW_RUN_VIEW in self.get_workflow_views(job_name):
+                url_kwargs['view_name'] = PREVIEW_RUN_VIEW
+            else:
+                url_kwargs['view_name'] = MAIN_RUN_VIEW
+            if object_id:
+                url_kwargs['object_id'] = object_id
+            return reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+
     @csrf_protect_m
     def changelist_view(self, request, extra_context=None):
         if extra_context is None:
             extra_context = {}
 
-        info = self.model._meta.app_label, self.model._meta.model_name
         jobs = []
         for job_name in self.get_job_names():
             if self.show_job_on_changelist(job_name):
-                url_kwargs = {
-                    'job_name': job_name,
-                }
                 jobs.append({
                     'title': self.get_job_title(job_name),
-                    'url': reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name),
+                    'url': self.get_workflow_start_url(job_name),
                     'css': ' '.join(self.get_changelist_link_css(job_name))
                 })
         extra_context.update({
@@ -198,17 +218,12 @@ class JobAdminMixin(object):
         if extra_context is None:
             extra_context = {}
 
-        info = self.model._meta.app_label, self.model._meta.model_name
         jobs = []
         for job_name in self.get_job_names():
             if self.show_job_on_changeform(job_name) and object_id:
-                url_kwargs = {
-                    'job_name': job_name,
-                    'object_id': object_id,
-                }
                 jobs.append({
                     'title': self.get_job_title(job_name),
-                    'url': reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name),
+                    'url': self.get_workflow_start_url(job_name, object_id=object_id),
                     'css': ' '.join(self.get_changeform_link_css(job_name))
                 })
         extra_context.update({
@@ -310,6 +325,7 @@ class JobAdminMixin(object):
         """
         Returns the context for all django-admin-rq views (form|preview_run|main_run|complete)
         """
+        info = self.model._meta.app_label, self.model._meta.model_name
         request.current_app = self.admin_site.name
         context = dict(
             self.admin_site.each_context(request),
@@ -331,8 +347,28 @@ class JobAdminMixin(object):
             try:
                 obj = self.model.objects.get(pk=object_id)
                 context['original'] = obj
+                context['original_change_url'] = reverse(
+                    'admin:%s_%s_change' % info, args=[object_id], current_app=self.admin_site.name
+                )
             except:
                 pass
+        else:
+            context['original_changelist_url'] = reverse(
+                'admin:%s_%s_changelist' % info, current_app=self.admin_site.name
+            )
+        if COMPLETE_VIEW in self.get_workflow_views(job_name):
+            url_kwargs = {
+                'job_name': job_name
+            }
+            if object_id:
+                url_kwargs['object_id'] = object_id
+            context['complete_view_url'] = reverse(
+                'admin:%s_%s_job_complete' % info,
+                kwargs=url_kwargs,
+                current_app=self.admin_site.name
+            )
+        else:
+            context['complete_view_url'] = None
         return context
 
     def job_form(self, request, job_name='', object_id=None):
@@ -351,7 +387,7 @@ class JobAdminMixin(object):
 
                 url_kwargs = {
                     'job_name': job_name,
-                    'view_name': PREVIEW_RUN_VIEW,
+                    'view_name': PREVIEW_RUN_VIEW if PREVIEW_RUN_VIEW in self.get_workflow_views(job_name) else MAIN_RUN_VIEW,
                 }
                 if object_id:
                     url_kwargs['object_id'] = object_id

@@ -52,15 +52,22 @@
 
     {% block job_content %}{% endblock %}
 
-    <div class="submit-row">
-        {% if preview %}
-            <a class="button inline" href="{% url opts|admin_urlname:'job_run' job_name=job_name view_name=main_run_view object_id=original.pk %}">
-                {% trans 'Run job' %}
-            </a>
-        {% else %}
-            <a class="button inline" href="{% url opts|admin_urlname:'job_complete' job_name=job_name object_id=original.pk %}">
-                {% trans 'Finish' %}
-            </a>
-        {% endif %}
-    </div>
+    {% block action_row %}
+        <div class="submit-row">
+            {% if preview %}
+                <a class="button inline" href="{% url opts|admin_urlname:'job_run' job_name=job_name view_name=main_run_view object_id=original.pk %}">
+                    {% trans 'Run' %}
+                </a>
+            {% else %}
+                {% if complete_view_url %}
+                    <a class="button inline" href="{{ complete_view_url }}">{% trans 'Continue' %}</a>
+                {% elif original_change_url %}
+                    <a class="button inline" href="{{ original_change_url }}">{% trans 'Done' %}</a>
+                {% else %}
+                    <a class="button inline" href="{{ original_changelist_url }}">{% trans 'Done' %}</a>
+                {% endif %}
+            {% endif %}
+        </div>
+    {% endblock %}
+
 {% endblock %}
