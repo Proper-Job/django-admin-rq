@@ -7,8 +7,8 @@ msgid ""
 msgstr ""
 "Project-Id-Version: \n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2016-04-18 10:51+0200\n"
-"PO-Revision-Date: 2016-04-18 10:53+0200\n"
+"POT-Creation-Date: 2016-04-18 11:09+0200\n"
+"PO-Revision-Date: 2016-04-18 11:09+0200\n"
 "Last-Translator: Moritz Pfeiffer <moritz.pfeiffer@alp-phone.ch>\n"
 "Language-Team: \n"
 "Language: de\n"
@@ -60,7 +60,7 @@ msgid "Preview"
 msgstr "Vorschau"
 
 #: templates/django_admin_rq/job_run.html:12
-#: templates/django_admin_rq/job_run.html:59
+#: templates/django_admin_rq/job_run.html:58
 msgid "Run"
 msgstr "Ausführen"
 
@@ -69,28 +69,27 @@ msgid "Form data"
 msgstr "Formulardaten"
 
 #: templates/django_admin_rq/job_run.html:36
-msgid "finished"
-msgstr "ist abgeschlossen"
-
-#: templates/django_admin_rq/job_run.html:38
 msgid "failed"
 msgstr "ist fehlgeschlagen"
 
-#: templates/django_admin_rq/job_run.html:41
+#: templates/django_admin_rq/job_run.html:39
 #, python-format
 msgid "Preview is being generated for %(title)s"
 msgstr "Vorschau wird erstellt für %(title)s"
 
-#: templates/django_admin_rq/job_run.html:43
+#: templates/django_admin_rq/job_run.html:41
 #, python-format
 msgid "%(title)s is running"
 msgstr "%(title)s wird ausgeführt"
 
-#: templates/django_admin_rq/job_run.html:63
+#: templates/django_admin_rq/job_run.html:62
 msgid "Continue"
 msgstr "Weiter"
 
-#: templates/django_admin_rq/job_run.html:65
-#: templates/django_admin_rq/job_run.html:67
+#: templates/django_admin_rq/job_run.html:64
+#: templates/django_admin_rq/job_run.html:66
 msgid "Done"
 msgstr "Fertig"
+
+#~ msgid "finished"
+#~ msgstr "ist abgeschlossen"
