@@ -1,10 +1,13 @@
 {% extends 'admin/change_list.html' %}
 
 {% block object-tools-items %}
-{% for job in changelist_jobs %}
-<li>
-    <a href="{{ job.url }}" class="{{ job.css }}">{{ job.title}}</a>
-</li>
-{% endfor %}
-{{ block.super }}
+
+    {% for job in changelist_jobs %}
+        <li>
+            <a href="{{ job.url }}" class="{{ job.css }}">{{ job.title}}</a>
+        </li>
+    {% endfor %}
+
+    {{ block.super }}
+
 {% endblock %}

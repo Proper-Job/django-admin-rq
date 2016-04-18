@@ -14,7 +14,10 @@
     <script type="text/javascript" src="{% static 'django_admin_rq/js/django_admin_rq.js' %}"></script>
 
     {{ form.media }}
-    {{ job_media }}
+
+    {% if job_media %}
+        {{ job_media }}
+    {% endif %}
 {% endblock %}
 
 {% block breadcrumbs %}

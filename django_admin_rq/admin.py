@@ -1,34 +1,41 @@
 # -*- coding: utf-8 -*-
-import re
+from __future__ import unicode_literals
 import copy
+import os
+import re
 from collections import OrderedDict
 from functools import update_wrapper
+from django.conf import settings
 
-from django import forms
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ImproperlyConfigured
+from django.core.files.storage import FileSystemStorage
+from django.core.files.uploadedfile import UploadedFile
 from django.core.urlresolvers import reverse
-from django.db import transaction
 from django.db import models
+from django.db import transaction
 from django.http import HttpResponseRedirect
 from django.template import RequestContext
 from django.template.response import TemplateResponse
 from django.utils import six
 from django.utils.decorators import method_decorator
+from django.utils.encoding import force_text
 from django.views.decorators.csrf import csrf_protect
 
 from django_admin_rq.models import JobStatus
-from django.utils.encoding import force_text
 
 csrf_protect_m = method_decorator(csrf_protect)
 
-_CONTENT_TYPE_PREFIX = 'contenttype:'
-_CONTENT_TYPE_RE_PATTERN = 'contenttype:([a-zA-Z-_]+)\.([a-zA-Z]+):(\d{1,10})'
+_CONTENT_TYPE_PREFIX = 'contenttype://'
+_CONTENT_TYPE_RE_PATTERN = 'contenttype://([a-zA-Z-_]+)\.([a-zA-Z]+):(\d{1,10})'
 
 FORM_VIEW = 'form'
 PREVIEW_RUN_VIEW = 'preview_run'
 MAIN_RUN_VIEW = 'main_run'
 COMPLETE_VIEW = 'complete'
+
+_fs = FileSystemStorage(os.path.join(settings.MEDIA_ROOT, 'django_admin_rq'))
+if not os.path.isdir(_fs.location):
+    os.makedirs(_fs.location)
 
 
 class JobAdminMixin(object):
@@ -62,6 +69,34 @@ class JobAdminMixin(object):
             ),
         ]
         return job_urls + urls
+
+    def get_form_view_url(self, job_name, object_id=None):
+        info = self.model._meta.app_label, self.model._meta.model_name
+        url_kwargs = {'job_name': job_name}
+        if object_id:
+            url_kwargs['object_id'] = object_id
+        return reverse('admin:%s_%s_job_form' % info,kwargs=url_kwargs,current_app=self.admin_site.name)
+
+    def get_preview_run_view_url(self, job_name, object_id=None):
+        info = self.model._meta.app_label, self.model._meta.model_name
+        url_kwargs = {'job_name': job_name, 'view_name': PREVIEW_RUN_VIEW}
+        if object_id:
+            url_kwargs['object_id'] = object_id
+        return reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+
+    def get_main_run_view_url(self, job_name, object_id=None):
+        info = self.model._meta.app_label, self.model._meta.model_name
+        url_kwargs = {'job_name': job_name, 'view_name': MAIN_RUN_VIEW}
+        if object_id:
+            url_kwargs['object_id'] = object_id
+        return reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+
+    def get_complete_view_url(self, job_name, object_id=None):
+        info = self.model._meta.app_label, self.model._meta.model_name
+        url_kwargs = {'job_name': job_name}
+        if object_id:
+            url_kwargs['object_id'] = object_id
+        return reverse('admin:%s_%s_job_complete' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
 
     def get_job_names(self):
         """
@@ -138,6 +173,12 @@ class JobAdminMixin(object):
         """
         return None
 
+    def get_job_callable_extra_context(self, request, job_name, preview=True, object_id=None):
+        """
+        Extra context that is passed to the job callable.  Must be pickleable
+        """
+        return {}
+
     def get_job_media(self, job_name):
         """
         Returns an instance of :class:`django.forms.widgets.Media` used to inject extra css and js into the workflow
@@ -183,6 +224,9 @@ class JobAdminMixin(object):
         url_kwargs = {
             'job_name': job_name,
         }
+        if object_id:
+            url_kwargs['object_id'] = object_id
+
         if FORM_VIEW in self.get_workflow_views(job_name):
             return reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
         else:
@@ -190,8 +234,6 @@ class JobAdminMixin(object):
                 url_kwargs['view_name'] = PREVIEW_RUN_VIEW
             else:
                 url_kwargs['view_name'] = MAIN_RUN_VIEW
-            if object_id:
-                url_kwargs['object_id'] = object_id
             return reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
 
     @csrf_protect_m
@@ -240,6 +282,7 @@ class JobAdminMixin(object):
         for field_name, field in form.fields.items():
             if field_name in form.cleaned_data:
                 form_value = form.cleaned_data[field_name]
+                display_value = None
                 if isinstance(form_value, models.Model):
                     ctype = ContentType.objects.get_for_model(form_value)
                     form_value = '{0}{1}.{2}:{3}'.format(
@@ -248,10 +291,19 @@ class JobAdminMixin(object):
                         ctype.model,
                         form_value.pk
                     )
+                elif isinstance(form_value, UploadedFile):
+                    file_name = _fs.get_available_name(form_value.name)
+                    file_path = _fs.path(file_name)
+                    with open(file_path, 'wb+') as destination:
+                        for chunk in form_value.chunks():
+                            destination.write(chunk)
+                    form_value = file_path
+                    display_value = file_name
                 data.append({
                     'name': field_name,
                     'label': force_text(field.label) if field.label else None,
                     'value': form_value,
+                    'display_value': display_value,
                 })
         return data
 
@@ -268,15 +320,16 @@ class JobAdminMixin(object):
 
         for field_data in copy.deepcopy(serialized_data):  # Don't modify the serialized session data
             value = field_data['value']
-            if isinstance(value, six.string_types) and value.startswith(_CONTENT_TYPE_PREFIX):
-                match = re.search(_CONTENT_TYPE_RE_PATTERN, value)
-                if match:
-                    field_data['value'] = ContentType.objects.get(
-                        app_label=match.group(1),
-                        model=match.group(2)
-                    ).get_object_for_this_type(**{
-                        'pk': match.group(3)
-                    })
+            if isinstance(value, six.string_types):
+                if value.startswith(_CONTENT_TYPE_PREFIX):
+                    match = re.search(_CONTENT_TYPE_RE_PATTERN, value)
+                    if match:
+                        field_data['value'] = ContentType.objects.get(
+                            app_label=match.group(1),
+                            model=match.group(2)
+                        ).get_object_for_this_type(**{
+                            'pk': match.group(3)
+                        })
             form_data.append(field_data)
 
         return form_data
@@ -321,12 +374,15 @@ class JobAdminMixin(object):
                 })
         return None
 
-    def get_job_context(self, request, job_name, object_id, view_name, job_status=None):
+    def get_job_context(self, request, job_name, object_id, view_name):
         """
         Returns the context for all django-admin-rq views (form|preview_run|main_run|complete)
         """
+
         info = self.model._meta.app_label, self.model._meta.model_name
+        preview = self.is_preview_run_view(view_name)
         request.current_app = self.admin_site.name
+
         context = dict(
             self.admin_site.each_context(request),
             opts=self.model._meta,
@@ -340,7 +396,7 @@ class JobAdminMixin(object):
             complete_view=COMPLETE_VIEW,
             form_data_list=self.get_session_form_data_as_list(request, job_name),
             form_data_dict=self.get_session_form_data_as_dict(request, job_name),
-            preview=self.is_preview_run_view(view_name),
+            preview=preview,
             job_media=self.get_job_media(job_name),
         )
         if object_id:
@@ -356,74 +412,68 @@ class JobAdminMixin(object):
             context['original_changelist_url'] = reverse(
                 'admin:%s_%s_changelist' % info, current_app=self.admin_site.name
             )
+        if view_name in (PREVIEW_RUN_VIEW, MAIN_RUN_VIEW):
+            job_status = self.get_session_job_status(request, job_name, view_name)
+            if job_status is None:
+                # job_status is None when no job has been started
+                job_callable = self.get_job_callable(job_name, preview)
+                if callable(job_callable):
+                    job_status = JobStatus()
+                    job_status.save()
+                    self.set_session_job_status(request, job_name, job_status, view_name)
+                    context.update({
+                        'job_status': job_status,
+                        'job_status_url': job_status.url()  # The frontend starts polling the status url if it's present
+                    })
+                    job_callable.delay(
+                        job_status,
+                        self.get_session_form_data_as_dict(request, job_name),
+                        self.get_job_callable_extra_context(request, job_name, preview, object_id)
+                    )
+            else:
+                context['job_status'] = job_status
+                # do not set job_status_url in this case otherwise it'll be an endless redirect loop
+
         if COMPLETE_VIEW in self.get_workflow_views(job_name):
-            url_kwargs = {
-                'job_name': job_name
-            }
-            if object_id:
-                url_kwargs['object_id'] = object_id
-            context['complete_view_url'] = reverse(
-                'admin:%s_%s_job_complete' % info,
-                kwargs=url_kwargs,
-                current_app=self.admin_site.name
-            )
+            context['complete_view_url'] = self.get_complete_view_url(job_name, object_id)
         else:
             context['complete_view_url'] = None
         return context
 
     def job_form(self, request, job_name='', object_id=None):
-        context = self.get_job_context(request, job_name, object_id, FORM_VIEW)
-        info = self.model._meta.app_label, self.model._meta.model_name
+        return self.job_serve(request, job_name, object_id, FORM_VIEW)
 
-        if request.method == 'GET':
-            form = self.get_job_form_class(job_name)(initial=self.get_job_form_initial(request, job_name))
-        else:
-            form = self.get_job_form_class(job_name)(request.POST, request.FILES)
-            if form.is_valid():
-                # Save the serialized form data to the session
-                session_data = {}
-                session_data['form_data'] = self.serialize_form(form)
-                request.session[self._get_job_session_key(job_name)] = session_data
-
-                url_kwargs = {
-                    'job_name': job_name,
-                    'view_name': PREVIEW_RUN_VIEW if PREVIEW_RUN_VIEW in self.get_workflow_views(job_name) else MAIN_RUN_VIEW,
-                }
-                if object_id:
-                    url_kwargs['object_id'] = object_id
-                return HttpResponseRedirect(
-                    reverse(
-                        'admin:%s_%s_job_run' % info,
-                        kwargs=url_kwargs,
-                        current_app=self.admin_site.name
-                    )
-                )
-        context['form'] = form
-        return TemplateResponse(request, self.get_job_form_template(job_name), RequestContext(request, context))
-
-    def job_run(self, request, job_name='', object_id=None, view_name=PREVIEW_RUN_VIEW):
-        # job_status is None when no job has been started
-        job_status = self.get_session_job_status(request, job_name, view_name)
-        preview = view_name == PREVIEW_RUN_VIEW
-        context = self.get_job_context(request, job_name, object_id, view_name, job_status=job_status)
-
-        if job_status is None:
-            job_callable = self.get_job_callable(job_name, preview=preview)
-            if callable(job_callable):
-                job_status = JobStatus()
-                job_status.save()
-                self.set_session_job_status(request, job_name, job_status, view_name)
-                context.update({
-                    'job_status': job_status,
-                    'job_status_url': job_status.url()  # The frontend starts polling the status url if it's present
-                })
-                job_callable.delay(job_status, self.get_session_form_data_as_dict(request, job_name))
-        else:
-            context['job_status'] = job_status
-            # do not set job_status_url in this case otherwise it'll be an endless redirect
-
-        return TemplateResponse(request, self.get_job_run_template(job_name, preview=preview), RequestContext(request, context))
+    def job_run(self, request, job_name='', object_id=None, view_name=None):
+        return self.job_serve(request, job_name, object_id, view_name)
 
     def job_complete(self, request, job_name='', object_id=None):
-        context = self.get_job_context(request, job_name, object_id, COMPLETE_VIEW)
-        return TemplateResponse(request, self.get_job_complete_template(job_name), RequestContext(request, context))
+        return self.job_serve(request, job_name, object_id, COMPLETE_VIEW)
+
+    def job_serve(self, request, job_name='', object_id=None, view_name=None, extra_context=None):
+        context = self.get_job_context(request, job_name, object_id, view_name)
+        if extra_context:
+            context.update(extra_context)
+
+        if FORM_VIEW == view_name:
+            if request.method == 'GET':
+                form = self.get_job_form_class(job_name)(initial=self.get_job_form_initial(request, job_name))
+            else:
+                form = self.get_job_form_class(job_name)(request.POST, request.FILES)
+                if form.is_valid():
+                    # Save the serialized form data to the session
+                    session_data = {}
+                    session_data['form_data'] = self.serialize_form(form)
+                    request.session[self._get_job_session_key(job_name)] = session_data
+
+                    if PREVIEW_RUN_VIEW in self.get_workflow_views(job_name):
+                        url = self.get_preview_run_view_url(job_name, object_id)
+                    else:
+                        url = self.get_main_run_view_url(job_name, object_id)
+                    return HttpResponseRedirect(url)
+            context['form'] = form
+            return TemplateResponse(request, self.get_job_form_template(job_name), RequestContext(request, context))
+        elif view_name in (PREVIEW_RUN_VIEW, MAIN_RUN_VIEW):
+            preview = self.is_preview_run_view(view_name)
+            return TemplateResponse(request, self.get_job_run_template(job_name, preview=preview), RequestContext(request, context))
+        else:
+            return TemplateResponse(request, self.get_job_complete_template(job_name), RequestContext(request, context))
