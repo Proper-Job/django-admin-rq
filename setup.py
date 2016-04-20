@@ -16,7 +16,7 @@ setup(
     author_email='moritz.pfeiffer@alp-phone.ch',
     zip_safe=False,
     classifiers=[
-        'Development Status :: 5 - Production/Stable',
+        'Development Status :: 4 - Beta',
         'Environment :: Web Environment',
         'Framework :: Django',
         'Intended Audience :: Developers',

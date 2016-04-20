@@ -61,6 +61,11 @@ class JobStatus(models.Model):
         if save:
             self.save()
 
+    def set_job_id(self, job_id, save=True):
+        self.job_id = job_id
+        if save:
+            self.save()
+
     def set_result(self, result, save=True):
         if isinstance(result, six.string_types):
             self.result = result
