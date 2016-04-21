@@ -5,6 +5,8 @@ import os
 import re
 from collections import OrderedDict
 from functools import update_wrapper
+from urllib.parse import urlencode, urljoin
+
 from django.conf import settings
 
 from django.contrib.contenttypes.models import ContentType
@@ -208,9 +210,6 @@ class JobAdminMixin(object):
     def is_complete_view(self, view_name):
         return view_name == COMPLETE_VIEW
 
-    def _get_job_session_key(self, job_name):
-        return 'django_admin_rq_'.format(job_name)
-
     def get_workflow_views(self, job_name):
         """
         Returns the view names included in the workflow for this job.
@@ -228,13 +227,17 @@ class JobAdminMixin(object):
             url_kwargs['object_id'] = object_id
 
         if FORM_VIEW in self.get_workflow_views(job_name):
-            return reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+            url = reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
         else:
             if PREVIEW_RUN_VIEW in self.get_workflow_views(job_name):
                 url_kwargs['view_name'] = PREVIEW_RUN_VIEW
             else:
                 url_kwargs['view_name'] = MAIN_RUN_VIEW
-            return reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+            url = reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+        params = {
+            'start': 'true'
+        }
+        return urljoin(url, '?{}'.format(urlencode(params)))
 
     @csrf_protect_m
     def changelist_view(self, request, extra_context=None):
@@ -307,8 +310,17 @@ class JobAdminMixin(object):
                 })
         return data
 
+    def _get_job_session_key(self, job_name):
+        return 'django_admin_rq_{}'.format(job_name)
+
+    def _start_job_session(self, request, job_name):
+        request.session[self._get_job_session_key(job_name)] = {}
+
     def get_session_data(self, request, job_name):
-        return request.session.get(self._get_job_session_key(job_name), {})
+        key = self._get_job_session_key(job_name)
+        if key not in request.session:
+            self._start_job_session(request, job_name)
+        return request.session[key]
 
     def get_session_form_data_as_list(self, request, job_name):
         """
@@ -441,12 +453,18 @@ class JobAdminMixin(object):
         return context
 
     def job_form(self, request, job_name='', object_id=None):
+        if 'start' in request.GET:
+            self._start_job_session(request, job_name)
         return self.job_serve(request, job_name, object_id, FORM_VIEW)
 
     def job_run(self, request, job_name='', object_id=None, view_name=None):
+        if 'start' in request.GET:
+            self._start_job_session(request, job_name)
         return self.job_serve(request, job_name, object_id, view_name)
 
     def job_complete(self, request, job_name='', object_id=None):
+        if 'start' in request.GET:
+            self._start_job_session(request, job_name)
         return self.job_serve(request, job_name, object_id, COMPLETE_VIEW)
 
     def job_serve(self, request, job_name='', object_id=None, view_name=None, extra_context=None):
@@ -461,9 +479,9 @@ class JobAdminMixin(object):
                 form = self.get_job_form_class(job_name)(request.POST, request.FILES)
                 if form.is_valid():
                     # Save the serialized form data to the session
-                    session_data = {}
+                    session_data = self.get_session_data(request, job_name)
                     session_data['form_data'] = self.serialize_form(form)
-                    request.session[self._get_job_session_key(job_name)] = session_data
+                    request.session.modified = True
 
                     if PREVIEW_RUN_VIEW in self.get_workflow_views(job_name):
                         url = self.get_preview_run_view_url(job_name, object_id)
