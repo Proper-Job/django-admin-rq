@@ -6,6 +6,7 @@ import re
 from collections import OrderedDict
 from functools import update_wrapper
 from urllib.parse import urlencode, urljoin
+from uuid import uuid4
 
 from django.conf import settings
 
@@ -72,33 +73,20 @@ class JobAdminMixin(object):
         ]
         return job_urls + urls
 
-    def get_form_view_url(self, job_name, object_id=None):
+    def get_workflow_url(self, view_name, job_name, object_id=None):
         info = self.model._meta.app_label, self.model._meta.model_name
         url_kwargs = {'job_name': job_name}
         if object_id:
             url_kwargs['object_id'] = object_id
-        return reverse('admin:%s_%s_job_form' % info,kwargs=url_kwargs,current_app=self.admin_site.name)
 
-    def get_preview_run_view_url(self, job_name, object_id=None):
-        info = self.model._meta.app_label, self.model._meta.model_name
-        url_kwargs = {'job_name': job_name, 'view_name': PREVIEW_RUN_VIEW}
-        if object_id:
-            url_kwargs['object_id'] = object_id
-        return reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
-
-    def get_main_run_view_url(self, job_name, object_id=None):
-        info = self.model._meta.app_label, self.model._meta.model_name
-        url_kwargs = {'job_name': job_name, 'view_name': MAIN_RUN_VIEW}
-        if object_id:
-            url_kwargs['object_id'] = object_id
-        return reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
-
-    def get_complete_view_url(self, job_name, object_id=None):
-        info = self.model._meta.app_label, self.model._meta.model_name
-        url_kwargs = {'job_name': job_name}
-        if object_id:
-            url_kwargs['object_id'] = object_id
-        return reverse('admin:%s_%s_job_complete' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+        if FORM_VIEW == view_name:
+            url = reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+        elif view_name in (PREVIEW_RUN_VIEW, MAIN_RUN_VIEW):
+            url_kwargs['view_name'] = view_name
+            url = reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+        else:
+            url = reverse('admin:%s_%s_job_complete' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+        return url
 
     def get_job_names(self):
         """
@@ -219,23 +207,15 @@ class JobAdminMixin(object):
         return FORM_VIEW, PREVIEW_RUN_VIEW, MAIN_RUN_VIEW, COMPLETE_VIEW
 
     def get_workflow_start_url(self, job_name, object_id=None):
-        info = self.model._meta.app_label, self.model._meta.model_name
-        url_kwargs = {
-            'job_name': job_name,
-        }
-        if object_id:
-            url_kwargs['object_id'] = object_id
-
         if FORM_VIEW in self.get_workflow_views(job_name):
-            url = reverse('admin:%s_%s_job_form' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+            url = self.get_workflow_url(FORM_VIEW, job_name, object_id)
         else:
             if PREVIEW_RUN_VIEW in self.get_workflow_views(job_name):
-                url_kwargs['view_name'] = PREVIEW_RUN_VIEW
+                url = self.get_workflow_url(PREVIEW_RUN_VIEW, job_name, object_id)
             else:
-                url_kwargs['view_name'] = MAIN_RUN_VIEW
-            url = reverse('admin:%s_%s_job_run' % info, kwargs=url_kwargs, current_app=self.admin_site.name)
+                url = self.get_workflow_url(MAIN_RUN_VIEW, job_name, object_id)
         params = {
-            'start': 'true'
+            'job-id': uuid4().hex[:6]
         }
         return urljoin(url, '?{}'.format(urlencode(params)))
 
@@ -447,24 +427,30 @@ class JobAdminMixin(object):
                 # do not set job_status_url in this case otherwise it'll be an endless redirect loop
 
         if COMPLETE_VIEW in self.get_workflow_views(job_name):
-            context['complete_view_url'] = self.get_complete_view_url(job_name, object_id)
+            context['complete_view_url'] = self.get_workflow_url(COMPLETE_VIEW, job_name, object_id)
         else:
             context['complete_view_url'] = None
         return context
 
+    def check_job_id(self, request, job_name):
+        if 'job-id' in request.GET:
+            job_id = request.GET['job-id']
+            stored_job_id = self.get_session_data(request, job_name).get('job-id', None)
+            if job_id != stored_job_id:
+                self._start_job_session(request, job_name)
+                self.get_session_data(request, job_name)['job-id'] = job_id
+                request.session.modified = True
+
     def job_form(self, request, job_name='', object_id=None):
-        if 'start' in request.GET:
-            self._start_job_session(request, job_name)
+        self.check_job_id(request, job_name)
         return self.job_serve(request, job_name, object_id, FORM_VIEW)
 
     def job_run(self, request, job_name='', object_id=None, view_name=None):
-        if 'start' in request.GET:
-            self._start_job_session(request, job_name)
+        self.check_job_id(request, job_name)
         return self.job_serve(request, job_name, object_id, view_name)
 
     def job_complete(self, request, job_name='', object_id=None):
-        if 'start' in request.GET:
-            self._start_job_session(request, job_name)
+        self.check_job_id(request, job_name)
         return self.job_serve(request, job_name, object_id, COMPLETE_VIEW)
 
     def job_serve(self, request, job_name='', object_id=None, view_name=None, extra_context=None):
@@ -484,9 +470,9 @@ class JobAdminMixin(object):
                     request.session.modified = True
 
                     if PREVIEW_RUN_VIEW in self.get_workflow_views(job_name):
-                        url = self.get_preview_run_view_url(job_name, object_id)
+                        url = self.get_workflow_url(PREVIEW_RUN_VIEW, job_name, object_id)
                     else:
-                        url = self.get_main_run_view_url(job_name, object_id)
+                        url = self.get_workflow_url(MAIN_RUN_VIEW, job_name, object_id)
                     return HttpResponseRedirect(url)
             context['form'] = form
             return TemplateResponse(request, self.get_job_form_template(job_name), RequestContext(request, context))
