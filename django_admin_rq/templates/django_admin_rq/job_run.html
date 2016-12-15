@@ -19,25 +19,27 @@
 {% block content %}
     {{ block.super }}
 
-    {% if form_data_list %}
-    <div class="module aligned">
-        <h2>{% trans 'Form data' %}</h2>
-        {% for field_data in form_data_list %}
-            <div class="form-row">
-                <label>
-                    {% if field_data.label %}{{ field_data.label }}{% else %}{{ field_data.name|capfirst }}{% endif %}:
-                </label>
-                <p>
-                    {% if field_data.display_value %}
-                        {{ field_data.display_value }}
-                    {% else %}
-                        {{ field_data.value }}
-                    {% endif %}
-                </p>
-            </div>
-        {% endfor %}
-    </div>
-    {% endif %}
+    {% block form_data %}
+        {% if form_data_list %}
+        <div class="module aligned">
+            <h2>{% trans 'Form data' %}</h2>
+            {% for field_data in form_data_list %}
+                <div class="form-row">
+                    <label>
+                        {% if field_data.label %}{{ field_data.label }}{% else %}{{ field_data.name|capfirst }}{% endif %}:
+                    </label>
+                    <p>
+                        {% if field_data.display_value %}
+                            {{ field_data.display_value }}
+                        {% else %}
+                            {{ field_data.value }}
+                        {% endif %}
+                    </p>
+                </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    {% endblock %}
 
     {% if job_status and not job_status.is_finished %}
         <div id="progress-container">
