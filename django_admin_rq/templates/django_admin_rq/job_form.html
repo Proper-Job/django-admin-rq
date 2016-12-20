@@ -15,7 +15,7 @@
         {% csrf_token %}
         <fieldset class="module aligned">
             {{ form.non_field_errors }}
-            {% for field in form %}
+            {% for field in form.visible_fields %}
                 <div class="form-row {% if field.errors %}errors{% endif %}">
                     {{ field.errors }}
                     {{ field.label_tag }} {{ field }}
@@ -23,6 +23,9 @@
                         <p class="help">{{ field.help_text|safe }}</p>
                     {% endif %}
                 </div>
+            {% endfor %}
+            {% for hidden_field in form.hidden_fields %}
+                {{ hidden_field}}
             {% endfor %}
         </fieldset>
         <div class="submit-row">
