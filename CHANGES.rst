@@ -1,6 +1,12 @@
 Changelog for Django admin rq
 =============================
 
+0.1.3 (2016-12-20)
+------------------
+
+- The form template learned to output hidden fields without a form-row wrapper.
+
+
 0.1.2 (2016-12-20)
 ------------------
 
