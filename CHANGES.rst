@@ -1,6 +1,11 @@
 Changelog for Django admin rq
 =============================
 
+0.1.2 (2016-12-20)
+------------------
+
+- Added form_data block to run template that allows overriding form data.
+
 
 0.1.1 (2016-04-26)
 ------------------
