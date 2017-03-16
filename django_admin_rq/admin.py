@@ -8,9 +8,11 @@ from functools import update_wrapper
 from urllib.parse import urlencode, urljoin
 from uuid import uuid4
 
+import django
 from django.conf import settings
 
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.staticfiles.templatetags.staticfiles import static
 from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import UploadedFile
 from django.core.urlresolvers import reverse
@@ -391,6 +393,11 @@ class JobAdminMixin(object):
             preview=preview,
             job_media=self.get_job_media(job_name),
         )
+        if django.VERSION > (1, 8):
+            jquery = static('admin/js/vendor/jquery/jquery.min.js')
+        else:
+            jquery = static('admin/js/jquery.min.js')
+        context['jquery'] = jquery
         if object_id:
             try:
                 obj = self.model.objects.get(pk=object_id)
@@ -475,9 +482,9 @@ class JobAdminMixin(object):
                         url = self.get_workflow_url(MAIN_RUN_VIEW, job_name, object_id)
                     return HttpResponseRedirect(url)
             context['form'] = form
-            return TemplateResponse(request, self.get_job_form_template(job_name), RequestContext(request, context))
+            return TemplateResponse(request, self.get_job_form_template(job_name), context)
         elif view_name in (PREVIEW_RUN_VIEW, MAIN_RUN_VIEW):
             preview = self.is_preview_run_view(view_name)
-            return TemplateResponse(request, self.get_job_run_template(job_name, preview=preview), RequestContext(request, context))
+            return TemplateResponse(request, self.get_job_run_template(job_name, preview=preview), context)
         else:
-            return TemplateResponse(request, self.get_job_complete_template(job_name), RequestContext(request, context))
+            return TemplateResponse(request, self.get_job_complete_template(job_name), context)
