@@ -8,3 +8,4 @@ class JobStatusSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = JobStatus
+        fields = '__all__'

@@ -1,6 +1,12 @@
 Changelog for Django admin rq
 =============================
 
+0.1.5 (2017-03-28)
+------------------
+
+- Added fields = '__all__' to JobStatusSerializer to allow with newer DRF versions.
+
+
 0.1.4 (2017-03-16)
 ------------------
 
