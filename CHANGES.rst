@@ -1,6 +1,24 @@
 Changelog for Django admin rq
 =============================
 
+0.2.0 (2017-11-02)
+------------------
+
+BREAKING CHANGES
+================
+
+Classes inheriting from JobAdminMixin need to make changes to the methods listed below.
+
+- The following methods of JobAdminMixin received extra kwargs:
+    - get_job_form_class
+    - get_job_form_initial
+    - get_job_form_template
+    - get_job_run_template
+    - get_job_complete_template
+    - get_job_callable
+    - get_job_media
+
+
 0.1.5 (2017-03-28)
 ------------------
 

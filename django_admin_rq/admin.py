@@ -98,13 +98,13 @@ class JobAdminMixin(object):
         """
         return []
 
-    def get_job_form_class(self, job_name):
+    def get_job_form_class(self, job_name, request=None, object_id=None, view_name=None, extra_context=None):
         """
         Returns the form class for this job's start page.
         """
         return None
 
-    def get_job_form_initial(self, request, job_name):
+    def get_job_form_initial(self, request, job_name, object_id=None, view_name=None, extra_context=None):
         """
         Returns the job form's initial data for this job's start page.
         """
@@ -140,25 +140,27 @@ class JobAdminMixin(object):
         """
         return True
 
-    def get_job_form_template(self, job_name):
+    def get_job_form_template(self, job_name, request=None, object_id=None, view_name=None, extra_context=None):
         """
         Returns the template for this job's start page
         """
         return 'django_admin_rq/job_form.html'
 
-    def get_job_run_template(self, job_name, preview=True):
+    def get_job_run_template(self, job_name, preview=True, request=None, object_id=None, view_name=None,
+                             extra_context=None):
         """
         Returns the template for this job's run page.
         """
         return 'django_admin_rq/job_run.html'
 
-    def get_job_complete_template(self, job_name):
+    def get_job_complete_template(self, job_name, request=None, object_id=None, view_name=None,
+                             extra_context=None):
         """
         Returns the template for this job's complete page
         """
         return 'django_admin_rq/job_complete.html'
 
-    def get_job_callable(self, job_name, preview=True):
+    def get_job_callable(self, job_name, preview=True, request=None, object_id=None, view_name=None):
         """
         Returns the function decorated with :func:`~django_rq.job` that runs the run async job for this view.
         view_name is either 'preview' or 'main'
@@ -171,7 +173,7 @@ class JobAdminMixin(object):
         """
         return {}
 
-    def get_job_media(self, job_name):
+    def get_job_media(self, job_name, request=None, object_id=None, view_name=None):
         """
         Returns an instance of :class:`django.forms.widgets.Media` used to inject extra css and js into the workflow
         templates.
@@ -391,7 +393,7 @@ class JobAdminMixin(object):
             form_data_list=self.get_session_form_data_as_list(request, job_name),
             form_data_dict=self.get_session_form_data_as_dict(request, job_name),
             preview=preview,
-            job_media=self.get_job_media(job_name),
+            job_media=self.get_job_media(job_name, request=request, object_id=object_id, view_name=view_name),
         )
         if django.VERSION > (1, 8):
             jquery = static('admin/js/vendor/jquery/jquery.min.js')
@@ -415,7 +417,8 @@ class JobAdminMixin(object):
             job_status = self.get_session_job_status(request, job_name, view_name)
             if job_status is None:
                 # job_status is None when no job has been started
-                job_callable = self.get_job_callable(job_name, preview)
+                job_callable = self.get_job_callable(job_name, preview, request=request, object_id=object_id,
+                                                     view_name=view_name)
                 if callable(job_callable):
                     job_status = JobStatus()
                     job_status.save()
@@ -467,9 +470,15 @@ class JobAdminMixin(object):
 
         if FORM_VIEW == view_name:
             if request.method == 'GET':
-                form = self.get_job_form_class(job_name)(initial=self.get_job_form_initial(request, job_name))
+                form_class = self.get_job_form_class(job_name, request=request, object_id=object_id,
+                                                     view_name=view_name, extra_context=extra_context,)
+                initial = self.get_job_form_initial(request, job_name, object_id=object_id, view_name=view_name,
+                                                    extra_context=extra_context)
+                form = form_class(initial=initial)
             else:
-                form = self.get_job_form_class(job_name)(request.POST, request.FILES)
+                form_class = self.get_job_form_class(job_name, request=request, object_id=object_id,
+                                                     view_name=view_name, extra_context=extra_context,)
+                form = form_class(request.POST, request.FILES)
                 if form.is_valid():
                     # Save the serialized form data to the session
                     session_data = self.get_session_data(request, job_name)
@@ -482,9 +491,39 @@ class JobAdminMixin(object):
                         url = self.get_workflow_url(MAIN_RUN_VIEW, job_name, object_id)
                     return HttpResponseRedirect(url)
             context['form'] = form
-            return TemplateResponse(request, self.get_job_form_template(job_name), context)
+            return TemplateResponse(
+                request,
+                self.get_job_form_template(
+                    job_name,
+                    request=request,
+                    object_id=object_id,
+                    view_name=view_name,
+                    extra_context=extra_context
+                ),
+                context
+            )
         elif view_name in (PREVIEW_RUN_VIEW, MAIN_RUN_VIEW):
             preview = self.is_preview_run_view(view_name)
-            return TemplateResponse(request, self.get_job_run_template(job_name, preview=preview), context)
+            return TemplateResponse(
+                request,
+                self.get_job_run_template(
+                    job_name,
+                    preview=preview,
+                    request=request,
+                    object_id=object_id,
+                    view_name=view_name,
+                    extra_context=extra_context
+                ),
+                context
+            )
         else:
-            return TemplateResponse(request, self.get_job_complete_template(job_name), context)
+            return TemplateResponse(request,
+                self.get_job_complete_template(
+                    job_name,
+                    request=request,
+                    object_id=object_id,
+                    view_name=view_name,
+                    extra_context=extra_context,
+                ),
+                context
+            )
